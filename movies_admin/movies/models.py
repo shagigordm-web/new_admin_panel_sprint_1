@@ -39,7 +39,8 @@ class GenreFilmWork(UUIDMixin):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "content\".\"genre_film_work" 
+        db_table = "content\".\"genre_film_work"
+        unique_together = ['film_work', 'genre' ]
 
 class Person(UUIDMixin, TimeStampedMixin):
     full_name = models.CharField(_('full_name'), max_length=255)
@@ -62,6 +63,7 @@ class PersonFilmWork(UUIDMixin):
 
     class Meta:
         db_table = "content\".\"person_film_work" 
+        unique_together = ['film_work', 'person', 'role']
 
 class FilmWork(UUIDMixin, TimeStampedMixin):
     class Type(models.TextChoices):

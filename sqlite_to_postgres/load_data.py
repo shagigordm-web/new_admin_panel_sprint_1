@@ -1,83 +1,23 @@
 import sqlite3
 import psycopg2
+import os
 from psycopg2.extras import DictCursor
 from collections.abc import Generator
 from dataclasses import dataclass
 from uuid import UUID
 from typing import Optional
 from datetime import date, datetime
+from split_settings.tools import include
+from dotenv import load_dotenv
+from contextlib import closing
+import logging
+from models import FilmWork, Person, Genre, GenreFilmWork, PersonFilmWork
+
+logging.basicConfig(level=logging.INFO)
+
+load_dotenv()
 
 BATCH_SIZE = 4
-
-@dataclass
-class FilmWork:
-    id: str
-    title: str
-    type: str
-    description: Optional[str] = None
-    creation_date: Optional[date] = None
-    rating: Optional[float] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    file_path: Optional[str] = None
-
-    def __post_init__(self):
-        if isinstance(self.id, str):
-            self.id = UUID(self.id)
-
-@dataclass
-class Genre:
-    id: str
-    name: str
-    description: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-    def __post_init__(self):
-        if isinstance(self.id, str):
-            self.id = UUID(self.id)
-
-@dataclass
-class GenreFilmWork:
-    id: str
-    film_work_id: str
-    genre_id: str
-    created_at: Optional[datetime] = None
-
-    def __post_init__(self):
-        if isinstance(self.id, str):
-            self.id = UUID(self.id)
-        if isinstance(self.film_work_id, str):
-            self.film_work_id = UUID(self.film_work_id)
-        if isinstance(self.genre_id, str):
-            self.genre_id = UUID(self.genre_id)
-
-@dataclass
-class Person:
-    id: str
-    full_name: str
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-    def __post_init__(self):
-        if isinstance(self.id, str):
-            self.id = UUID(self.id)
-
-@dataclass
-class PersonFilmWork:
-    id: str
-    film_work_id: str
-    person_id: str
-    role: str
-    created_at: Optional[datetime] = None
-
-    def __post_init__(self):
-        if isinstance(self.id, str):
-            self.id = UUID(self.id)
-        if isinstance(self.film_work_id, str):
-            self.film_work_id = UUID(self.film_work_id)
-        if isinstance(self.person_id, str):
-            self.person_id = UUID(self.person_id)
 
 SQL_INSERT_MAP = {
     FilmWork: """
@@ -199,10 +139,10 @@ class PostgresSaver:
     def save_all_data(self, data_generator: Generator[list, None, None]):
         """Сохраняет все данные из генератора"""
         for batch_no, batch in enumerate(data_generator, start=1):
-            print(f'Сохраняем батч #{batch_no}, объектов: {len(batch)}')
+            logging.info(f'Сохраняем батч #{batch_no}, объектов: {len(batch)}')
             self.save_batch(batch)
-            print(f'Батч #{batch_no} успешно сохранен')
-            print('---')
+            logging.info(f'Батч #{batch_no} успешно сохранен')
+            logging.info('---')
 
 def verify_data_migration(sqlite_conn: sqlite3.Connection, pg_conn: psycopg2.extensions.connection):
     """Проверяет целостность данных после миграции из SQLite в PostgreSQL с использованием батчей"""
@@ -217,7 +157,7 @@ def verify_data_migration(sqlite_conn: sqlite3.Connection, pg_conn: psycopg2.ext
     }
     
     # Проверка количества записей в каждой таблице
-    print("Проверка количества записей...")
+    ("Проверка количества записей...")
     for sqlite_table, pg_table in table_map.items():
         # Получаем количество записей из SQLite
         sqlite_cursor = sqlite_conn.cursor()
@@ -229,19 +169,19 @@ def verify_data_migration(sqlite_conn: sqlite3.Connection, pg_conn: psycopg2.ext
         pg_cursor.execute(f"SELECT COUNT(*) FROM {pg_table}")
         pg_count = pg_cursor.fetchone()[0]
         
-        print(f"Таблица {sqlite_table}: SQLite={sqlite_count}, PostgreSQL={pg_count}")
+        logging.info(f"Таблица {sqlite_table}: SQLite={sqlite_count}, PostgreSQL={pg_count}")
         assert sqlite_count == pg_count, (
             f"Несоответствие количества записей в таблице {sqlite_table}: "
             f"SQLite={sqlite_count}, PostgreSQL={pg_count}"
         )
     
-    print("✓ Количество записей во всех таблицах совпадает\n")
+    logging.info("✓ Количество записей во всех таблицах совпадает\n")
     
     # Проверка содержимого записей для каждой таблицы с использованием батчей
-    print("Проверка содержимого записей батчами...")
+    logging.info("Проверка содержимого записей батчами...")
     
     for sqlite_table, pg_table in table_map.items():
-        print(f"Проверка таблицы: {sqlite_table}")
+        logging.info(f"Проверка таблицы: {sqlite_table}")
         
         # Получаем общее количество записей для прогресса
         sqlite_cursor = sqlite_conn.cursor()
@@ -379,14 +319,14 @@ def verify_data_migration(sqlite_conn: sqlite3.Connection, pg_conn: psycopg2.ext
                                     f"SQLite={sqlite_value}, PostgreSQL={pg_value}"
                                 )
             
-            print(f"  Батч #{batch_number} ({len(sqlite_batch)} записей) проверен успешно")
+            logging.info(f"  Батч #{batch_number} ({len(sqlite_batch)} записей) проверен успешно")
             
             offset += BATCH_SIZE
             batch_number += 1
         
-        print(f"✓ Таблица {sqlite_table} прошла проверку ({total_records} записей)")
+        logging.info(f"✓ Таблица {sqlite_table} прошла проверку ({total_records} записей)")
     
-    print("\n✓ Все проверки пройдены успешно! Миграция данных завершена корректно.")
+    logging.info("✓ Все проверки пройдены успешно! Миграция данных завершена корректно.")
 
 def load_from_sqlite(connection: sqlite3.Connection, pg_conn: psycopg2.extensions.connection):
     """Основной метод загрузки данных из SQLite в Postgres"""
@@ -404,21 +344,27 @@ def load_from_sqlite(connection: sqlite3.Connection, pg_conn: psycopg2.extension
 
     # Загружаем данные из каждой таблицы
     for table_name, data_class in table_class_map.items():
-        print(f'Загружаем данные из таблицы: {table_name}')
+        logging.info(f'Загружаем данные из таблицы: {table_name}')
         
         try:
             data_generator = sqlite_loader.load_table_data(table_name, data_class)
             postgres_saver.save_all_data(data_generator)
-            print(f'Таблица {table_name} успешно перенесена\n')
+            logging.info(f'Таблица {table_name} успешно перенесена\n')
         except Exception as e:
-            print(f'Ошибка при переносе таблицы {table_name}: {e}')
+            logging.error(f'Ошибка при переносе таблицы {table_name}: {e}')
             continue
 
 if __name__ == '__main__':
-    dsl = {'dbname': 'movies_database', 'user': 'app', 'password': '123qwe', 'host': '127.0.0.1', 'port': 5432}
-    
-    with sqlite3.connect('db.sqlite') as sqlite_conn, psycopg2.connect(
-        **dsl, cursor_factory=DictCursor
-    ) as pg_conn:
-        load_from_sqlite(sqlite_conn, pg_conn)
-        verify_data_migration(sqlite_conn, pg_conn)
+    dsl = {
+        'dbname': os.environ.get('DB_NAME'),
+        'user': os.environ.get('DB_USER'), 
+        'password': os.environ.get('DB_PASSWORD'), 
+        'host': os.environ.get('DB_HOST', '127.0.0.1'), 
+        'port': os.environ.get('DB_PORT', 5432)
+    }
+
+    with sqlite3.connect('db.sqlite') as sqlite_conn:
+        with closing(psycopg2.connect(**dsl, cursor_factory=DictCursor)) as pg_conn:
+            with pg_conn:
+                load_from_sqlite(sqlite_conn, pg_conn)
+                verify_data_migration(sqlite_conn, pg_conn)

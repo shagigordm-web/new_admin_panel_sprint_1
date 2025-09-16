@@ -78,3 +78,6 @@ CREATE INDEX IF NOT EXISTS idx_genre_film_work_film_work_id ON content.genre_fil
 CREATE INDEX IF NOT EXISTS idx_person_film_work_person_id ON content.person_film_work(person_id);
 CREATE INDEX IF NOT EXISTS idx_person_film_work_film_work_id ON content.person_film_work(film_work_id);
 CREATE INDEX IF NOT EXISTS idx_person_film_work_role ON content.person_film_work(role);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_genre_film_work_unique ON content.genre_film_work(genre_id, film_work_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_person_film_work_unique ON content.person_film_work(person_id, film_work_id, role);
